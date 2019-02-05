@@ -2,31 +2,26 @@ package com.example.abdul.logloc;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
-import android.app.ProgressDialog;
-import android.content.ContentResolver;
+import android.content.DialogInterface;
 import android.content.pm.PackageManager;
-import android.database.Cursor;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
 import android.os.Build;
-import android.provider.ContactsContract;
 import android.support.annotation.NonNull;
-import android.support.constraint.ConstraintLayout;
 import android.support.v4.app.ActivityCompat;
+import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.telephony.SmsManager;
 import android.text.Editable;
 import android.text.TextWatcher;
-import android.util.Log;
 import android.view.View;
 import android.widget.Adapter;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
-import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.TextView;
@@ -34,25 +29,34 @@ import android.widget.Toast;
 
 import java.util.ArrayList;
 
+// CHECK !! HAVE DISABLED SOME PERMISSIONS !!
 public class MainActivity extends AppCompatActivity implements AdapterView.OnItemSelectedListener {
 	private String[] _repeatDurations;
 	private ArrayList<String> allContacts;
-	private ArrayList<String> allNumbers;
 	private ArrayList<String> selectedContacts;
 	private ArrayList<String> selectedNumbers;
 	private LocationManager locationManager;
 	private LocationListener locationListener;
 	private Spinner spinnerContacts;
 	private Spinner spinnerTimeDuration;
-	private TextView textView;
+	private EditText searchContact;
+	private TextView selectedContactsView;
+	private TextView searchTitle;
+	private Button startButton;
+	private Button stopButton;
 	private Long selectedDuration;
 	private int granted;
-	ProgressDialog progressDialog;
+	private ReadContactsAsync readContactsAsync;
 	
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.activity_main);
+		
+		AlertDialog a = new AlertDialog.Builder(this).create();
+		a.setTitle("What is LogLoc?");
+		a.setMessage(getResources().getString(R.string.app_description));
+		a.show();
 		
 		granted = PackageManager.PERMISSION_GRANTED;
 		int finePermission = ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION);
@@ -70,6 +74,7 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
 						Manifest.permission.READ_CONTACTS,
 				}, 10);
 			} else {
+				
 				denied();
 			}
 			return;
@@ -78,33 +83,27 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
 		initAll();
 	}
 	
-	private void denied() {
-		Toast.makeText(this, "One of the permissions is not granted !", Toast.LENGTH_LONG).show();
-		ScrollView parent = ((ScrollView) findViewById(R.id.parentView));
-		parent.removeAllViews();
+	@Override
+	public void onBackPressed() {
+		super.onBackPressed();
 	}
 	
-	private void initAll() {
-		//		ProgressBar p = (ProgressBar)findViewById(R.id.progressBar);
-//		p.setVisibility(View.VISIBLE);
-//		findViewById(R.id.progressBar).setVisibility(View.GONE);
-		progressDialog = new ProgressDialog(this);
-		allContacts = new ArrayList<String>();
-		allNumbers = new ArrayList<String>();
-		selectedContacts = new ArrayList<String>();
-		selectedNumbers = new ArrayList<String>();
-		_repeatDurations = new String[]{"2", "3", "5", "10"};
-		
-		spinnerContacts = (Spinner) findViewById(R.id.spinnerContacts);
-		spinnerTimeDuration = (Spinner) findViewById(R.id.spinnerTimeDuration);
-		textView = (TextView) findViewById(R.id.textView);
-		locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
-		progressDialog.setMessage("Reading Contacts, please wait...");
-		
-		initSearchContactTextInput();
-		getContactList("");
-		initTimeDurations();
+	@Override
+	protected void onResume() {
+		super.onResume();
 	}
+	
+	@Override
+	protected void onPause() {
+		super.onPause();
+	}
+	
+	@Override
+	protected void onDestroy() {
+		super.onDestroy();
+		stopLogger(null);
+	}
+	
 	
 	@Override
 	public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
@@ -167,6 +166,97 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
 		);
 	}
 	
+	@Override
+	public void onItemSelected(AdapterView<?> parent, View v, int position, long id) {
+		
+		if (position > 0) {
+			String contact = allContacts.get(position);
+			selectedNumbers.add(
+					contact.substring(contact.lastIndexOf(' ') + 1)
+			);
+			selectedContacts.add(contact);
+		}
+		
+		updateSelectedContacts();
+	}
+	
+	@Override
+	public void onNothingSelected(AdapterView<?> parent) {
+	}
+	
+	public void startLogger(View v) {
+		String message = "";
+		if (selectedNumbers.size() < 1) {
+			message = "• Select at least 1 contact.\n\n";
+		}
+		LocationManager manager = (LocationManager) getSystemService(LOCATION_SERVICE);
+		if (manager != null && !manager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+			message += "• Turn on GPS-location.";
+		}
+		if (message.length() > 0) {
+			AlertDialog alertDialog = new AlertDialog.Builder(this).create();
+			alertDialog.setMessage(message.trim());
+			alertDialog.show();
+			return;
+		}
+		
+		startCheckingGeoLocation();
+		Toast.makeText(this, "Started New Logger", Toast.LENGTH_SHORT).show();
+		toggleStartStop();
+	}
+	
+	public void stopLogger(View v) {
+		if (locationListener != null) {
+			locationManager.removeUpdates(locationListener);
+			locationListener = null;
+			Toast.makeText(this, "Stopped Logger", Toast.LENGTH_SHORT).show();
+		} else {
+			Toast.makeText(this,
+					"No Active Logger",
+					Toast.LENGTH_SHORT).show();
+		}
+		toggleStartStop();
+	}
+	
+	public void removeContact(View v) {
+		if (selectedNumbers.size() > 0) {
+			selectedNumbers.remove(selectedNumbers.size() - 1);
+			selectedContacts.remove(selectedContacts.size() - 1);
+			updateSelectedContacts();
+		}
+	}
+	
+	public void removeSearchText(View v) {
+		searchContact.setText("");
+	}
+	
+	private void initAll() {
+		allContacts = new ArrayList<>();
+		selectedContacts = new ArrayList<>();
+		selectedNumbers = new ArrayList<>();
+		_repeatDurations = new String[]{"2", "3", "5", "10", "15", "20", "25"};
+		
+		spinnerContacts = (Spinner) findViewById(R.id.spinnerContacts);
+		spinnerTimeDuration = (Spinner) findViewById(R.id.spinnerTimeDuration);
+		searchContact = (EditText) findViewById(R.id.editText);
+		selectedContactsView = (TextView) findViewById(R.id.textView);
+		searchTitle = (TextView) findViewById(R.id.textView3);
+		locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
+		startButton = (Button) findViewById(R.id.startbutton);
+		stopButton = (Button) findViewById(R.id.stopButton);
+		stopButton.setEnabled(false);
+		
+		initSearchContactTextInput();
+		getContactList("");
+		initTimeDurations();
+	}
+	
+	private void denied() {
+		Toast.makeText(this, "Permission(s) Denied !", Toast.LENGTH_LONG).show();
+		ScrollView parent = ((ScrollView) findViewById(R.id.parentView));
+		parent.removeAllViews();
+	}
+	
 	private void sendSMS(String message) {
 		final int MAX_SMS_MESSAGE_LENGTH = 160;
 		SmsManager manager = SmsManager.getDefault();
@@ -186,101 +276,40 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
 	
 	private void getContactList(String matchString) {
 		allContacts.clear();
-		allNumbers.clear();
-		allContacts.add("");
-		allNumbers.add("");
-		progressDialog.show();
+		final String searching = "Searching Contacts...";
+		final String searchComplete = "Select contacts to inform:";
+		searchTitle.setText(searching);
 		
-		String selection = matchString.length() > 0 ? ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " LIKE ?" : null;
-		String[] selectionArgs = matchString.length() > 0 ? new String[]{"%" + matchString + "%"} : null;
-		ContentResolver cr = this.getContentResolver();
-		Cursor cur = cr.query(ContactsContract.Contacts.CONTENT_URI,
-				null,
-				selection,
-				selectionArgs,
-				ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC");
+		if (readContactsAsync != null) {
+			readContactsAsync.cancel(true);
+		}
 		
-		if ((cur != null ? cur.getCount() : 0) > 0) {
-			
-			while (cur.moveToNext()) {
-				String id = cur.getString(cur.getColumnIndex(ContactsContract.Contacts._ID));
-				String name = cur.getString(cur.getColumnIndex(ContactsContract.Contacts.DISPLAY_NAME));
+		readContactsAsync = new ReadContactsAsync(new ContactsResponse() {
+			@Override
+			public void onContactsRead(ArrayList<String> list) {
+				allContacts = list;
+				searchTitle.setText(searchComplete);
+				ArrayAdapter<String> adapter = new ArrayAdapter<>(
+						MainActivity.this,
+						android.R.layout.simple_spinner_item,
+						allContacts
+				);
+				adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
 				
-				if (
-						cur.getInt(cur.getColumnIndex(ContactsContract.Contacts.HAS_PHONE_NUMBER)) > 0
-						) {
-					Cursor pCur = cr.query(
-							ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-							null,
-							ContactsContract.CommonDataKinds.Phone.CONTACT_ID + " = ?",
-							new String[]{id}, null);
-					
-					
-					while (pCur != null && pCur.moveToNext()) {
-						String phoneNo = pCur.getString(pCur.getColumnIndex(
-								ContactsContract.CommonDataKinds.Phone.NUMBER));
-						
-						if (phoneNo.indexOf(' ') == -1) {
-							allContacts.add(name + " " + phoneNo);
-							allNumbers.add(phoneNo);
-						}
-					}
-					
-					if (pCur != null) {
-						pCur.close();
-					}
-					
-				}
+				spinnerContacts.setAdapter(adapter);
+				spinnerContacts.setSelection(Adapter.NO_SELECTION, true);
+				spinnerContacts.setOnItemSelectedListener(MainActivity.this);
 			}
-			
-			ArrayAdapter<String> adapter = new ArrayAdapter<>(
-					this,
-					android.R.layout.simple_spinner_item, allContacts
-			);
-			adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-			
-			spinnerContacts.setAdapter(adapter);
-			spinnerContacts.setSelection(Adapter.NO_SELECTION, true);
-			spinnerContacts.setOnItemSelectedListener(this);
-		}
-		if (cur != null) {
-			cur.close();
-		}
-		progressDialog.dismiss();
-	}
-	
-	
-	@Override
-	public void onItemSelected(AdapterView<?> parent, View v, int position, long id) {
+		}, this.getContentResolver());
 		
-		if (position > 0) {
-			selectedNumbers.add(allNumbers.get(position));
-			selectedContacts.add(allContacts.get(position));
-		}
-		
-		updateSelectedContacts();
-	}
-	
-	private void updateSelectedContacts() {
-		textView.setText(_arrayListToString(selectedContacts));
-	}
-	
-	private String _arrayListToString(ArrayList<String> list) {
-		StringBuilder s = new StringBuilder();
-		for (String str : list) {
-			s.append(str);
-			s.append("\n");
-		}
-		return s.toString();
-	}
-	
-	@Override
-	public void onNothingSelected(AdapterView<?> parent) {
-		// TODO Auto-generated method stub
+		readContactsAsync.execute(matchString);
 	}
 	
 	private void initTimeDurations() {
-		final String[] repeatDurations = new String[]{"2 minutes", "3 minutes", "5 minutes", "10 minutes"};
+		String[] repeatDurations = new String[_repeatDurations.length];
+		for (int i = 0; i < _repeatDurations.length; i++) {
+			repeatDurations[i] = _repeatDurations[i] + " minutes";
+		}
 		
 		ArrayAdapter<String> adapter = new ArrayAdapter<>(
 				this,
@@ -293,7 +322,7 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
 		spinnerTimeDuration.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
 			@Override
 			public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-				selectedDuration = (Long.parseLong(_repeatDurations[position].split(" ")[0], 10) * 1000 * 60);
+				selectedDuration = (Long.parseLong(_repeatDurations[position], 10) * 1000 * 60);
 			}
 			
 			@Override
@@ -303,42 +332,20 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
 		});
 	}
 	
-	public void startLogger(View v) {
-		startCheckingGeoLocation();
-		Toast.makeText(this, "New Logger Started", Toast.LENGTH_SHORT).show();
-	}
-	
-	public void stopLogger(View v) {
-		if (locationListener != null) {
-			locationManager.removeUpdates(locationListener);
-			locationListener = null;
-			Toast.makeText(this, "Stopped Logger", Toast.LENGTH_SHORT).show();
-		} else {
-			Toast.makeText(this,
-					"No Active Logger",
-					Toast.LENGTH_SHORT).show();
-		}
-	}
-	
-	public void removeContact(View v) {
-		if (selectedNumbers.size() > 0) {
-			selectedNumbers.remove(selectedNumbers.size() - 1);
-			selectedContacts.remove(selectedContacts.size() - 1);
-			updateSelectedContacts();
-		}
+	private void toggleStartStop() {
+		startButton.setEnabled(locationListener == null);
+		stopButton.setEnabled(locationListener != null);
 	}
 	
 	private void initSearchContactTextInput() {
-		EditText searchContact = (EditText) findViewById(R.id.editText);
 		searchContact.addTextChangedListener(new TextWatcher() {
 			@Override
 			public void beforeTextChanged(CharSequence s, int start, int count, int after) {
-				
+			
 			}
 			
 			@Override
 			public void onTextChanged(CharSequence s, int start, int before, int count) {
-				
 				if (s.length() > 0) {
 					getContactList(s.toString());
 				} else {
@@ -348,19 +355,22 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
 			
 			@Override
 			public void afterTextChanged(Editable s) {
-				
+			
 			}
 		});
 	}
 	
-	@Override
-	protected void onResume() {
-		super.onResume();
+	private void updateSelectedContacts() {
+		selectedContactsView.setText(_arrayListToString(selectedContacts));
 	}
 	
-	@Override
-	protected void onDestroy() {
-		super.onDestroy();
-		stopLogger(null);
+	private String _arrayListToString(ArrayList<String> list) {
+		StringBuilder s = new StringBuilder();
+		for (String str : list) {
+			s.append(str);
+			s.append("\n");
+		}
+		return s.toString();
 	}
+	
 }

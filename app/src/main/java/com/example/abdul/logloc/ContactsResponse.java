@@ -1,4 +1,7 @@
 package com.example.abdul.logloc;
 
-public class ContactsResponse {
+import java.util.ArrayList;
+
+public interface ContactsResponse {
+	void onContactsRead(ArrayList<String> list);
 }
