@@ -1,19 +1,19 @@
 <resources>
-	<string name="app_name">Log Loc</string>
-	<string name="clear">Clear</string>
-	<string name="cross">X</string>
-	<string name="hint_search">Search contact</string>
-	<string name="duration">Repeat Duration</string>
-	<string name="start_button">Start Logger</string>
-	<string name="stop_button">Stop Logger</string>
-	<string name="app_description">
+    <string name="app_name">Log Loc</string>
+    <string name="clear">Clear</string>
+    <string name="cross">X</string>
+    <string name="hint_search">Search contact</string>
+    <string name="duration">Repeat Duration</string>
+    <string name="start_button">Start Logger</string>
+    <string name="stop_button">Stop Logger</string>
+    <string name="app_description">
 		• Purpose of this application is to check user\'s GPS-location periodically and SMS it to user\'s selected contact(s).\n
-		Just so user does not have to bother during journey to inform his/her present location.\n
-		• Person/People receiving SMS, will get a Google Maps internet-link, through which they can check senders location on Google Map.\n
+		Just so users do not have to bother during journey to inform about their present location.\n
+		• Person/People receiving SMSs, will get a Google Maps internet-link, through which they can check senders location on Google Map.\n
 		• How to use:\n
 		1) Turn on GPS-location of your device.\n
 		2) Select contact(s) to whom you want to inform your route\'s GPS-locations through SMSs.\n
-		3) Select time-duration, after every interval updated location will be sent automatically.\n
+		3) Select time-duration. After every interval updated location will be sent automatically.\n
 		4) Press \"Start Logger\" button to Start.\n
 		5) Press \"Stop Logger\" button to Stop.\n
 		NOTE:\n

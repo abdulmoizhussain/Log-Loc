@@ -1,19 +1,21 @@
-package com.example.abdul.logloc;
+package com.example.logloc;
+
+import androidx.annotation.NonNull;
+import androidx.appcompat.app.AlertDialog;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.content.DialogInterface;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
+import android.location.LocationProvider;
 import android.os.Build;
-import android.support.annotation.NonNull;
-import android.support.v4.app.ActivityCompat;
-import android.support.v7.app.AlertDialog;
-import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
-import android.telephony.SmsManager;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.View;
@@ -21,17 +23,17 @@ import android.widget.Adapter;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
+import android.widget.CheckBox;
+import android.widget.CompoundButton;
 import android.widget.EditText;
-import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import java.util.ArrayList;
 
-// CHECK !! HAVE DISABLED SOME PERMISSIONS !!
 public class MainActivity extends AppCompatActivity implements AdapterView.OnItemSelectedListener {
-	private String[] _repeatDurations;
+
 	private ArrayList<String> allContacts;
 	private ArrayList<String> selectedContacts;
 	private ArrayList<String> selectedNumbers;
@@ -45,130 +47,124 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
 	private Button startButton;
 	private Button stopButton;
 	private Long selectedDuration;
-	private int granted;
+	private final int
+			PERMISSION_GRANTED = PackageManager.PERMISSION_GRANTED,
+			APP_PERMISSIONS_REQUEST_CODE = 10;
 	private ReadContactsAsync readContactsAsync;
-	
+
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.activity_main);
-		
+
+		firstShowAppDescription();
+	}
+
+	private void firstShowAppDescription() {
+		View checkBoxView = View.inflate(this, R.layout.start_up_note, null);
+		CheckBox checkBox = checkBoxView.findViewById(R.id.checkbox);
+		checkBox.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+			@Override
+			public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+				// Save to shared preferences
+			}
+		});
+		checkBox.setText("Do not Show again");
+
 		AlertDialog a = new AlertDialog.Builder(this).create();
 		a.setTitle("What is LogLoc?");
+//		a.setView(checkBoxView);
+//		a.setCancelable(false);
 		a.setMessage(getResources().getString(R.string.app_description));
+		a.setButton(AlertDialog.BUTTON_POSITIVE, "Ok",
+				new DialogInterface.OnClickListener() {
+					public void onClick(DialogInterface dialog, int which) {
+						dialog.dismiss();
+						continueApplication();
+					}
+				});
 		a.show();
-		
-		granted = PackageManager.PERMISSION_GRANTED;
+	}
+
+	private void continueApplication() {
 		int finePermission = ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION);
 		int coarsePermission = ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION);
 		int smsPermission = ActivityCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS);
 		int contactsPermission = ActivityCompat.checkSelfPermission(this, Manifest.permission.READ_CONTACTS);
-		
-		if (finePermission != granted || coarsePermission != granted ||
-				smsPermission != granted || contactsPermission != granted) {
+
+		if (finePermission != PERMISSION_GRANTED || coarsePermission != PERMISSION_GRANTED ||
+				smsPermission != PERMISSION_GRANTED || contactsPermission != PERMISSION_GRANTED) {
 			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
 				requestPermissions(new String[]{
 						Manifest.permission.ACCESS_FINE_LOCATION,
 						Manifest.permission.ACCESS_COARSE_LOCATION,
 						Manifest.permission.SEND_SMS,
 						Manifest.permission.READ_CONTACTS,
-				}, 10);
+				}, APP_PERMISSIONS_REQUEST_CODE);
 			} else {
-				
-				denied();
+				accessDenied();
 			}
 			return;
 		}
-		
 		initAll();
 	}
-	
-	@Override
-	public void onBackPressed() {
-		super.onBackPressed();
-	}
-	
-	@Override
-	protected void onResume() {
-		super.onResume();
-	}
-	
-	@Override
-	protected void onPause() {
-		super.onPause();
-	}
-	
-	@Override
-	protected void onDestroy() {
-		super.onDestroy();
-		stopLogger(null);
-	}
-	
-	
+
 	@Override
 	public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
-		switch (requestCode) {
-			case 10:
-				if (grantResults.length > 0) {
-					Boolean allowed = true;
-					for (int result : grantResults) {
-						if (result != granted) {
-							allowed = false;
-							break;
-						}
-					}
-					if (allowed) {
-						initAll();
-					} else {
-						denied();
-					}
-				}
-		}
 		super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+		if (requestCode == APP_PERMISSIONS_REQUEST_CODE) {
+
+			for (int result : grantResults) {
+				if (result != PERMISSION_GRANTED) {
+					accessDenied();
+					break;
+				}
+			}
+
+			initAll();
+		}
 	}
-	
+
 	@SuppressLint("MissingPermission")
 	private void startCheckingGeoLocation() {
-		
 		stopLogger(null);
 		locationListener = new LocationListener() {
 			@Override
 			public void onLocationChanged(Location location) {
 				String lat = Double.toString(location.getLatitude());
 				String lng = Double.toString(location.getLongitude());
-				
-				String textMessage = "Check location at: " +
+
+				String textMessage = "Check my current location: " +
 						"https://maps.google.com/maps?q=" +
 						lat + "," + lng;
-				sendSMS(textMessage);
+				SMS.send(textMessage, selectedNumbers);
 			}
-			
+
 			@Override
 			public void onStatusChanged(String provider, int status, Bundle extras) {
 			}
-			
+
 			@Override
 			public void onProviderEnabled(String provider) {
-				Toast.makeText(MainActivity.this, "GPS Enabled", Toast.LENGTH_SHORT).show();
+				showToast("GPS Enabled", false);
 			}
-			
+
 			@Override
 			public void onProviderDisabled(String provider) {
-				Toast.makeText(MainActivity.this, "GPS is disabled", Toast.LENGTH_LONG).show();
+				showToast("GPS is disabled", true);
 				stopLogger(null);
 			}
 		};
-		
-		locationManager.requestLocationUpdates("gps",
+
+		locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER,
 				selectedDuration,
 				0,
 				locationListener
 		);
 	}
-	
+
 	@Override
 	public void onItemSelected(AdapterView<?> parent, View v, int position, long id) {
-		
 		if (position > 0) {
 			String contact = allContacts.get(position);
 			selectedNumbers.add(
@@ -176,14 +172,38 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
 			);
 			selectedContacts.add(contact);
 		}
-		
 		updateSelectedContacts();
 	}
-	
+
 	@Override
 	public void onNothingSelected(AdapterView<?> parent) {
 	}
-	
+
+	private void setStartupNoteCheckbox() {
+
+	}
+
+	private void initAll() {
+		allContacts = new ArrayList<>();
+		selectedContacts = new ArrayList<>();
+		selectedNumbers = new ArrayList<>();
+
+		spinnerContacts = (Spinner) findViewById(R.id.spinnerContacts);
+		spinnerTimeDuration = (Spinner) findViewById(R.id.spinnerTimeDuration);
+		searchContact = (EditText) findViewById(R.id.editText);
+		selectedContactsView = (TextView) findViewById(R.id.textView);
+		searchTitle = (TextView) findViewById(R.id.textView3);
+		locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
+		startButton = (Button) findViewById(R.id.startbutton);
+		stopButton = (Button) findViewById(R.id.stopButton);
+		stopButton.setEnabled(false);
+
+		initSearchContactTextInput();
+		getContactList("");
+		initTimeDurations();
+		toggleStartStopButton();
+	}
+
 	public void startLogger(View v) {
 		String message = "";
 		if (selectedNumbers.size() < 1) {
@@ -199,25 +219,20 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
 			alertDialog.show();
 			return;
 		}
-		
 		startCheckingGeoLocation();
-		Toast.makeText(this, "Started New Logger", Toast.LENGTH_SHORT).show();
-		toggleStartStop();
+		showToast("Started New Logger", false);
+		startService(new Intent(this, LogLocationService.class));
+		toggleStartStopButton();
 	}
-	
+
 	public void stopLogger(View v) {
 		if (locationListener != null) {
 			locationManager.removeUpdates(locationListener);
 			locationListener = null;
-			Toast.makeText(this, "Stopped Logger", Toast.LENGTH_SHORT).show();
-		} else {
-			Toast.makeText(this,
-					"No Active Logger",
-					Toast.LENGTH_SHORT).show();
 		}
-		toggleStartStop();
+		toggleStartStopButton();
 	}
-	
+
 	public void removeContact(View v) {
 		if (selectedNumbers.size() > 0) {
 			selectedNumbers.remove(selectedNumbers.size() - 1);
@@ -225,125 +240,99 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
 			updateSelectedContacts();
 		}
 	}
-	
+
 	public void removeSearchText(View v) {
 		searchContact.setText("");
 	}
-	
-	private void initAll() {
-		allContacts = new ArrayList<>();
-		selectedContacts = new ArrayList<>();
-		selectedNumbers = new ArrayList<>();
-		_repeatDurations = new String[]{"2", "3", "5", "10", "15", "20", "25"};
-		
-		spinnerContacts = (Spinner) findViewById(R.id.spinnerContacts);
-		spinnerTimeDuration = (Spinner) findViewById(R.id.spinnerTimeDuration);
-		searchContact = (EditText) findViewById(R.id.editText);
-		selectedContactsView = (TextView) findViewById(R.id.textView);
-		searchTitle = (TextView) findViewById(R.id.textView3);
-		locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
-		startButton = (Button) findViewById(R.id.startbutton);
-		stopButton = (Button) findViewById(R.id.stopButton);
-		stopButton.setEnabled(false);
-		
-		initSearchContactTextInput();
-		getContactList("");
-		initTimeDurations();
+
+	// ================================= PRIVATE METHODS ============================================
+
+	private void accessDenied() {
+		showToast("Permission(s) Denied !", true);
+		finish();
+//		ScrollView parent = (ScrollView) findViewById(R.id.parentView);
+//		parent.removeAllViews();
 	}
-	
-	private void denied() {
-		Toast.makeText(this, "Permission(s) Denied !", Toast.LENGTH_LONG).show();
-		ScrollView parent = ((ScrollView) findViewById(R.id.parentView));
-		parent.removeAllViews();
-	}
-	
-	private void sendSMS(String message) {
-		final int MAX_SMS_MESSAGE_LENGTH = 160;
-		SmsManager manager = SmsManager.getDefault();
-		
-		for (String phoneNumber : selectedNumbers) {
-			int length = message.length();
-			
-			if (length > MAX_SMS_MESSAGE_LENGTH) {
-				ArrayList<String> messageList = manager.divideMessage(message);
-				
-				manager.sendMultipartTextMessage(phoneNumber, null, messageList, null, null);
-			} else {
-				manager.sendTextMessage(phoneNumber, null, message, null, null);
-			}
-		}
-	}
-	
+
 	private void getContactList(String matchString) {
 		allContacts.clear();
-		final String searching = "Searching Contacts...";
-		final String searchComplete = "Select contacts to inform:";
-		searchTitle.setText(searching);
-		
+		{
+			final String searching = "Searching Contacts...";
+			searchTitle.setText(searching);
+		}
+
 		if (readContactsAsync != null) {
 			readContactsAsync.cancel(true);
 		}
-		
-		readContactsAsync = new ReadContactsAsync(new ContactsResponse() {
+
+		readContactsAsync = new ReadContactsAsync(new IContactsResponse() {
 			@Override
 			public void onContactsRead(ArrayList<String> list) {
 				allContacts = list;
-				searchTitle.setText(searchComplete);
+				{
+					final String searchComplete = "Select contacts whom to inform:";
+					searchTitle.setText(searchComplete);
+				}
 				ArrayAdapter<String> adapter = new ArrayAdapter<>(
 						MainActivity.this,
 						android.R.layout.simple_spinner_item,
 						allContacts
 				);
 				adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-				
+
 				spinnerContacts.setAdapter(adapter);
 				spinnerContacts.setSelection(Adapter.NO_SELECTION, true);
 				spinnerContacts.setOnItemSelectedListener(MainActivity.this);
 			}
 		}, this.getContentResolver());
-		
+
 		readContactsAsync.execute(matchString);
 	}
-	
+
 	private void initTimeDurations() {
-		String[] repeatDurations = new String[_repeatDurations.length];
-		for (int i = 0; i < _repeatDurations.length; i++) {
-			repeatDurations[i] = _repeatDurations[i] + " minutes";
+		String[] repeatDurations = new String[Globals.rDurations.length];
+		for (int i = 0; i < Globals.rDurations.length; i++) {
+			repeatDurations[i] = Globals.rDurations[i] + " minutes";
 		}
-		
+
 		ArrayAdapter<String> adapter = new ArrayAdapter<>(
 				this,
 				android.R.layout.simple_spinner_item,
 				repeatDurations
 		);
-		
+
 		adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
 		spinnerTimeDuration.setAdapter(adapter);
 		spinnerTimeDuration.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
 			@Override
 			public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-				selectedDuration = (Long.parseLong(_repeatDurations[position], 10) * 1000 * 60);
+				selectedDuration = (Long.parseLong(Globals.rDurations[position], 10) * 1000 * 60);
 			}
-			
+
 			@Override
 			public void onNothingSelected(AdapterView<?> parent) {
-				
+
 			}
 		});
 	}
-	
-	private void toggleStartStop() {
-		startButton.setEnabled(locationListener == null);
-		stopButton.setEnabled(locationListener != null);
+
+	private void toggleStartStopButton() {
+		try {
+			startButton.setEnabled(locationListener == null);
+			stopButton.setEnabled(locationListener != null);
+		} catch (Exception e) {
+//			e.printStackTrace();
+			System.out.println("Exception e" + e.toString());
+		}
 	}
-	
+
 	private void initSearchContactTextInput() {
 		searchContact.addTextChangedListener(new TextWatcher() {
 			@Override
 			public void beforeTextChanged(CharSequence s, int start, int count, int after) {
-			
+
 			}
-			
+
 			@Override
 			public void onTextChanged(CharSequence s, int start, int before, int count) {
 				if (s.length() > 0) {
@@ -352,18 +341,18 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
 					getContactList("");
 				}
 			}
-			
+
 			@Override
 			public void afterTextChanged(Editable s) {
-			
+
 			}
 		});
 	}
-	
+
 	private void updateSelectedContacts() {
 		selectedContactsView.setText(_arrayListToString(selectedContacts));
 	}
-	
+
 	private String _arrayListToString(ArrayList<String> list) {
 		StringBuilder s = new StringBuilder();
 		for (String str : list) {
@@ -372,5 +361,12 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
 		}
 		return s.toString();
 	}
-	
+
+	/**
+	 * @param msg        the message for toast
+	 * @param lengthLong true->LONG false->SHORT
+	 */
+	private void showToast(String msg, boolean lengthLong) {
+		Toast.makeText(MainActivity.this, msg, lengthLong ? Toast.LENGTH_LONG : Toast.LENGTH_SHORT).show();
+	}
 }

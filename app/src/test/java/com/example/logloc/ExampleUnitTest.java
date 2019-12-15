@@ -1,4 +1,4 @@
-package com.example.abdul.logloc;
+package com.example.logloc;
 
 import org.junit.Test;
 
